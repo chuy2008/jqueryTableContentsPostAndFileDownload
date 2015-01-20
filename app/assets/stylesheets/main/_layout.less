@@ -1,0 +1,33 @@
+body {
+    & > header {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: @headerHeight;
+    }
+    & > nav {
+        position: absolute;
+        top: @headerHeight;
+        left: 0;
+        width: @drawerWidth;
+        bottom: 0;
+        box-sizing: border-box;
+    }
+    
+    & > section {
+        position: absolute;
+        top: @headerHeight;
+        left: @drawerWidth;
+        right: 0;
+        bottom: 0;
+    }     
+}
+
+#main > header {
+    position: absolute;
+    top: 75px;
+    left: 30px;
+    right: 0;
+    height: @breadcrumbHeight;
+}

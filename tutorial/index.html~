@@ -1,0 +1,250 @@
+<html>
+<body>
+<div>
+<h2>The Goal </h2>
+<p>Show an implementation of information handling in the Web, executed among the Browser at the Front End and Play Framework at the Back End, while achieving an optimal work distribution balance among these two points.  When we say optimal work distribution balance, we refer to the fact of performing operations locally when possible, avoiding the following cycle:</p>
+<p>browser transmits to server   >>>   processing at the server   >>>   server transmits to browser,</p> 
+<p>if the browser has the capacity to process the information.</p>
+
+<p>
+The "information handling in the Web" mentioned above, consists roughly on the following: 
+
+<ul>
+<li>User requests information from the Server and has it displayed in Table format</li> 
+<li>User arranges the information locally (sorting it the browser according to specific field value) </li>
+<li>At some point in time, when the user decides it is sorted exactly as desired, she sends it back in JSON format via a POST operation to Play Framework at the Back End</li>
+<li>Play Framework receives the data in JSON format, process it and inserts it within a new Excel File</li>
+<li>The Excel File is announced back to the browser, ready for download.</li>
+</ul>
+</p>
+</div>
+
+<div>
+<h2>Main Objectives</h2> 
+<p>The present Work covers several objectives, showing specially: </p>
+<p>
+<ul>
+<li>collect the information in the Server h2 Database via Squeryl and in the process utilizing tail recursion in Scala, to have it formatted as a mapped List</li>
+<li>deliver the information from the Server to the Client (Browser) in a mapped List format, as mentioned in the point above.</li> 
+<li>display and handle the information locally, in the Browser via a jquery table plugin (DataTable)</li> 
+<li>Once the User is happy with the arrangement of the Table contents, gather the existing Table information, within the DOM in the Browser page, with javascript</li>
+<li>execute a POST with the content in JSON Format (REST Interface), utilizing ajax</li> 
+<li>receive the information at the Back End with Play Framework in JSON format (REST Interface)</li> 
+<li>convert the received information to an Excel File</li> 
+<li>deliver back this Excel File to the Browser, ready for download</li> 
+</ul>
+</p>
+</div>
+
+<div>
+<h2>Design Criteria and Code implementation</h2>
+
+<p>An important design criteria was deciding on an optimal balance of data handling.  The decision is to achieve a good balance on when to handle the data remotely, at the Server and when to handle it locally, at the Browser. An initial idea and possible valid implementation was storing and rearranging the table contents in Play Framework as per the Browser orders.  In this scheme, the Browser just displays information, in the sequence as it is received from the server. In this scheme, for instance, the User sees the table contents and decides to sort the rows based on column number 5 value, highest at the top. The Browser sends to the Server the column number information and the type of sort needed (highest or lowest at the top).  The rows are sorted in the Server and sent back to the Browser.  This scheme works, the issues are:</p>
+<p>
+<ul>
+<li>delay experienced by the User in seeing his screen refreshed, as he has to wait for all the table contents to be transmitted on to the server and back to the browser.</li>
+<li>Bandwidth is occupied in shipping table contents back and forth as per the User's desires.</li>
+</ul>
+</p> 
+<p>We decided that if you can handle the data locally,- as it is indeed the case,- it makes more sense to do it that way.   Why ship the information back and forth if you can process it locally?  But there is a trade off, as in all design decisions.  After you have sorted locally the table rows as per your liking, the server is completely ignorant of the final arrangement.  So you have to send back the table contents, in the right order, to the server for its final processing.  Another possible approach would be to keep a version of the table contents at the server, indexed per row.  Once the User has sorted the table contents at her browser, instead of sending row by row back to server, she could just send the indexes, ordered as desired.  In this case, the server would receive just the indexes and arrange its own copy of the local table contents as instructed, avoiding altogether the transmission of the full Table contents.  We decided not to go for this route because it added complexity (in the form of coordinating the server and the router) at a very little benefit.   After all, we now live in the era of huge bandwidth everywhere, right?   This scheme might be worth it though when bandwidth is scarce or if Table contents are multimedia (images, video). </p> 
+
+<p>As in the present example we are handling only text and numbers, the decision was to  keep it simple and just send to the server all the Table contents present at the Browser DOM,  when instructed to do so.</p>
+
+<p>Below you can find the code that handles in javascript the sending of table contents to the server as a POST.  As you can observe, we first have to collect the existing data at the Table and store it in the statCellData Array, to later post it.   You can also note that we are doing some string handling below. This is needed in order to extract the URL prefix and thereafter be able to POST to the right address.  In this way, this code can work without any modification, not withstanding if you are running it in your own machine or in a public server.</p> 
+<pre><code>
+      function postTableData(x)
+      {         
+      	 var table = document.getElementById('busUnitStatsTable');        
+         var item = [];
+         var statCellData = [];
+         for (var i = 0; i < table.rows.length; i++) 
+         {
+           item[i] = [];
+           for (var j = 0; j < table.rows[i].cells.length; j++)
+           {
+          	 item[i][j] = table.rows[i].cells[j].innerHTML;
+           	 var statCell = {};   
+           	 statCell.rowLoc = i.toString();
+           	 statCell.colLoc = j.toString();
+           	 statCell.val = item[i][j];
+             statCellData.push(statCell);     	 	    	               
+           }
+         }    
+         var statCellDataJson = $.toJSON(statCellData);
+         var partialURL1 = document.URL;
+         var partialURL2 = partialURL1.substring(partialURL1.indexOf("/") + 1, partialURL1.length);
+         var partialURL3 = partialURL2.substring(partialURL2.indexOf("/") + 1, partialURL2.length);
+         var partialURL4 = partialURL3.substring(partialURL3.indexOf("/") + 1, partialURL3.length);
+         var partialURL5 = partialURL1.substring(0, partialURL1.length - partialURL4.length);
+         var urll = partialURL5 + 'postJsonDataForExcelConversion/' + x;                        
+         $.ajax({
+         	url: urll,
+            dataType: 'html',
+         	type: 'POST', 
+         	contentType: 'text/json',
+         	data: statCellDataJson})
+         	.done(function (response) 
+         	{
+               $('#insertPostResponse').html(response);
+               console.log(response); 
+            });
+      }      
+
+</code></pre>
+
+<p>Please note that you are sending the table contents at a very specific URL. The server needs to be ready to receive this POST, with the information formated as JSON.  Below you can find the code at the server that can handle this task:</p>
+
+<pre><code>
+  def processTableJsonDataForExcelConversion(fileName: String) = Action(parse.json)
+  {
+     request =>
+       request.session.get("fileCleanUpNeeded") match
+       {
+         case Some(x) => x match
+           {
+              case "yes" => {FileExplorer.cleanUpFilesWhoseNameIncludes(
+                                  request.session.get("fileId"), mainPathForFiles)}
+              case _     => {}    
+           }
+         case None    => {}
+       }           
+       val salesDataInTable = request.body.as[List[Map[String, String]]]
+       val fileNameAndPath  = ExcelConverter.excelConv(fileName + "-" + request.session.get("fileId").getOrElse("noFileIdInSesion"), 
+                                                         mainPathForFiles, 
+                                                         salesDataInTable)
+        Ok(views.html.showDownloadFileLink(fileNameAndPath)).withSession(
+            "fileId" -> request.session.get("fileId").getOrElse("11"), "fileCleanUpNeeded" -> "yes")
+                
+  }
+</code></pre>
+
+<p>Of course, you need to add a line at the routes file (within the conf folder) to direct the incoming request to the correct function. This is the line you need to add in routes:</p>
+<pre><code>
+POST  /postJsonDataForExcelConversion/:fileName  controllers.Application.processTableJsonDataForExcelConversion(fileName: String)
+</code></pre>
+
+<h2>Path Binding</h2>
+<p>As you might have noted, when you select to display the data of a particular Business Unit, you send as a parameter a specific Business Unit Object.  As it turns out, Play Framework can handle pretty transparently both Strings and Ints in its route file, but it is not the case with Objects, when passed via the URL. You need to add a Path Binding function to process Objects as Parameters when handled through the routes file.  This represents some work, but after you do it the first time it is pretty straightforward.  Below is the code to handle the Path Binding:</p>
+<pre><code>
+   implicit def pathBinder(implicit strBinder: PathBindable[String]) = new PathBindable[BusinessUnitId] 
+    {
+       override def bind(key: String, value: String): Either[String, BusinessUnitId] =
+        {           
+           AppBusinessUnitIdDB.findByKey(value.toInt) match
+           {
+              case Some(x) => Right(new BusinessUnitId(x.name, x.keyy))
+              case None    => Left("for some strange reason, Business Unit is not in database, " +
+                                    "or at least the following key = " + value + "does not appear " +
+                   		            "to exist == BusinessUnitId scala routine, within pathBinder function")
+           }
+        }        
+        override def unbind(key: String, busUnitId: BusinessUnitId): String = 
+        {
+            strBinder.unbind(key, busUnitId.keyy.toString)
+        }
+     }  
+</code></pre>
+
+<h2>File Cleaning</h2>
+
+<p>The process to send an Excel File to the User is to first produce and store it at the server and then present it to the User for download.  At some point in time, however, you need to erase these files at the server, otherwise outdated files are going to be stored at the server.   We decided to do that by reviewing per session if there are any remaining files produced during the session and erasing them.  In a production Application, ideally you would need to review at logout if there are any files left and erase them.  You can even add an actor that periodically erases files that are too old.  For our purposes, our scheme works fine.  Here is the code:</p>
+<pre><code>request.session.get("fileCleanUpNeeded") match
+       {
+         case Some(x) => x match
+           {
+              case "yes" => {FileExplorer.cleanUpFilesWhoseNameIncludes(
+                             request.session.get("fileId"),mainPathForFiles)}
+              case _     => {}    
+           }
+         case None    => {}
+       }
+</code></pre>
+
+<h2>tail recursion</h2>
+<p> I want to make a special mention of tail recursion, because it is really fun.  It is actually liberating to have an option to for loops and very handy when you do not know in advance the length of the data you are going to work on.  It is one of the reasons I enjoy Scala over Java.  Be careful of using tail recursion,  it is addictive   :-). Below you can find the code used in one of the recursion functions. In this function, I gather all the contents of a Directory, inspect if it is a File or a Directory.  If is a Directory, I let it go untouched, if it is a File, I review if I have to erase it or not.  Here is the code, it is contained on the loop function. The session Id parameter is passed as a String Option, it is the variable received under strOption:</p>
+<pre><code>
+  def cleanUpFilesWhoseNameIncludes(strOption: Option[String], presentDirectory: String) =
+  {
+    strOption match
+    {
+      case Some(x) => 
+        {
+           def loop(filesRemaining: List[java.io.File], sessionId: String): Boolean =
+           {
+              if (!filesRemaining.headOption.isEmpty)
+              {
+                 filesRemaining.head.isFile match
+                 {
+                   case true  => 
+                     {
+                       filesRemaining.head.getName() contains sessionId match
+                       {
+                         case true => 
+                           {
+                              filesRemaining.head.delete()
+                              loop(filesRemaining.tail, sessionId)
+                           }
+                         case _ => {loop(filesRemaining.tail, sessionId)}
+                       }
+                     }
+                   case false => loop(filesRemaining.tail, sessionId) 
+                 }
+              }
+              else {true}
+           }
+           loop(new java.io.File(presentDirectory).listFiles().toList, x)
+        }
+      case None    => {}
+    }
+    
+  }
+</code></pre>
+ 
+<h2> jquery Table plug in: DataTables</h2>
+<p> The plug-in employed for handling the data in the browser, using jQuery, is DataTables,</p> 
+<p>url: http://www.datatables.net/</p>
+<p>Hats off for this guys, they really handle the data beautifully.</p>
+
+
+<h2>Excel Conversion</h2>
+<p> For doing the Excel Conversion, I employ Apache POI Project, the Java API for Microsoft Documents, below you have the URL:</p>
+<p>http://poi.apache.org/</p>
+
+<h2>File Download</h2>
+<p>Below you can find the code employed for downloading files, I am using the available Play Framework tools for this.</p>
+<pre><code>
+      Ok.sendFile(
+        content = new java.io.File(fileNameAndPath),
+        fileName = _ => "SalesStatsForYourAnalysis.xlsx").withSession(
+           "fileId" -> request.session.get("fileId").getOrElse("11"), "fileCleanUpNeeded" -> "yes")                   
+</code></pre>
+
+<h2>Session Key Value Pairs</h2>
+<p> The Program handles a couple of Session Key Value Pairs (String, String), they are:</p>
+<p>
+<ul>
+<li>"fileId" -> some String value</li>
+<li>"fileCleanUpNeeded" -> some String value</li>
+</ul> 
+</p>
+<p> The first pair with the key value "fileId" is used to store a Random Number generated at the beginning of the Session. This Random Number will be used as part of the name of the file that will be eventually downloaded. Here is the code where initially this value is set: </p>
+<pre><code>
+Ok(views.html.index("Please select one option")("")(lOfBusUnits)).withSession(
+"fileId" -> RandomCode.generateRandomCode(5), "fileCleanUpNeeded" -> "no")
+</code></pre>
+<p> This Random Number is generated with the objective of handling different users at the same time and avoiding conflict at the time of downloading their respective files. I guess in a full fledged application, the standard way to avoid conflict would be to take the users name,- which must be unique,- and use it to assign to name the file.  In this particular template, since handling users, passwords and associated security is out of its scope, we are employing this Random Number Generator to avoid conflict.  The code below shows how we are integrating the "fileId" value to the file name</p>
+<pre><code>
+val fileNameAndPath  = ExcelConverter.excelConv(fileName + "-" + request.session.get("fileId").getOrElse("noFileIdInSesion"), 
+                                                         mainPathForFiles, 
+                                                         salesDataInTable)
+</code></pre>
+<p> Please note that the variable "fileName" is the specific region selected by the Customer on her screen, the region whose sale stats she is particularly interested in. </p>
+<p> When reading the File Session value mentioned above, whose key is "fileName" I employ the following command: </p>
+<pre><code>
+request.session.get("fileId").getOrElse("11")
+</code></pre>
+<p> Since the get("fileId") command returns a String Option, I am appending a getOrElse("11") to convert it to a String.  I cannot think of any reason why this getOrElse command executed on the String Option should go to the "Else" alternative, as the "fileId" value is assigned at the beginning of the Session and kept there all the time.  But if for some strange, unknown reason this happened, then the number integrated in the file name would be 11 </p>
+<p> The other Session key value pair, with the key "fileCleanUpNeeded", is used to perform file erasure after the file has been produced and downloaded, to free disk space. Please take a look above to the "File Cleaning" Section if you want to know more detail on this. </p>
+</div>
+</body>
+</html>

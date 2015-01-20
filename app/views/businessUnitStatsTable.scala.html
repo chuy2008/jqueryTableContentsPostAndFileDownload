@@ -1,0 +1,88 @@
+@(label: String)(fileName: String)(lOfBusUnits: List[models.BusinessUnitId])(mappedBusUnitStats: List[scala.collection.immutable.Map[String,String]])
+
+@main(label)(lOfBusUnits){
+  
+   <script src="@routes.Assets.at("javascripts/main.js")" type="text/javascript"></script>
+
+      <script>
+      function postTableData(x)
+      {         
+      	 var table = document.getElementById('busUnitStatsTable');        
+         var item = [];
+         var statCellData = [];
+         for (var i = 0; i < table.rows.length; i++) 
+         {
+           item[i] = [];
+           for (var j = 0; j < table.rows[i].cells.length; j++)
+           {
+          	 item[i][j] = table.rows[i].cells[j].innerHTML;
+           	 var statCell = {};   
+           	 statCell.rowLoc = i.toString();
+           	 statCell.colLoc = j.toString();
+           	 statCell.val = item[i][j];
+             statCellData.push(statCell);     	 	    	               
+           }
+         }    
+         var statCellDataJson = $.toJSON(statCellData);
+         var partialURL1 = document.URL;
+         var partialURL2 = partialURL1.substring(partialURL1.indexOf("/") + 1, partialURL1.length);
+         var partialURL3 = partialURL2.substring(partialURL2.indexOf("/") + 1, partialURL2.length);
+         var partialURL4 = partialURL3.substring(partialURL3.indexOf("/") + 1, partialURL3.length);
+         var partialURL5 = partialURL1.substring(0, partialURL1.length - partialURL4.length);
+         var urll = partialURL5 + 'postJsonDataForExcelConversion/' + x;                        
+         $.ajax({
+         	url: urll,
+            dataType: 'html',
+         	type: 'POST', 
+         	contentType: 'text/json',
+         	data: statCellDataJson})
+         	.done(function (response) 
+         	{
+               $('#insertPostResponse').html(response);
+               console.log(response); 
+            });
+      }      
+      </script>
+   <script>
+    $(document).ready( function () {
+         $('#busUnitStatsTable').DataTable();
+         } );
+   
+   </script>
+
+   <table id="busUnitStatsTable" class="stripe hover cell-border">   
+      <thead> 
+        <tr>
+           <th width="80"> Business Unit Name </th>
+           <th width="80"> Quarter </th>       
+           <th width="80"> Sales (USD) </th>
+           <th width="80"> Projects Closed </th>       
+           <th width="80"> New Projects </th>
+           <th width="80"> man-hours devoted to sales tasks</th>       
+        </tr>
+      </thead>
+      <tbody>
+         @for(busUnitStats <- mappedBusUnitStats ){
+         	 <tr>
+                <td>@busUnitStats.getOrElse("name", "")</td>
+                <td>@busUnitStats.getOrElse("quarter", "")</td>	
+                <td>@busUnitStats.getOrElse("sales", "")</td>              
+                <td>@busUnitStats.getOrElse("projectsClosed", "")</td>
+                <td>@busUnitStats.getOrElse("newProjects", "")</td>             
+                <td>@busUnitStats.getOrElse("manHours", "")</td>
+             }
+             </tr>
+         }
+       </tbody>  
+   </table>
+   <div class="form-actions">
+      <button type="submit" id="reqExcelButton" onclick ="postTableData('@fileName')">@Messages("convert table to Excel")</button>
+      <span id = "insertPostResponse"></span>    
+   </div>
+
+   <script>
+    $(function(){
+         $('#busUnitStatsTable').DataTable();
+         });   
+   </script>
+   
